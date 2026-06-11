@@ -9,7 +9,9 @@ from model.factory import embed_model
 
 # 项目根目录
 ROOT_DIR = Path(__file__).parent.parent
+#知识文档
 DATA_DIR = ROOT_DIR / "data"
+#向量库
 CHROMA_DIR = ROOT_DIR / "chroma_db"
 
 # 切块配置
@@ -49,7 +51,7 @@ class VectorStoreService:
         )
         chunks = splitter.split_documents(documents)
 
-        # 3. 向量化 + 存库
+        # 3. 文本向量化 → 写入本地 Chroma 向量库     
         vector_store = Chroma.from_documents(
             documents=chunks,
             embedding=embed_model,
@@ -59,9 +61,9 @@ class VectorStoreService:
         return vector_store
 
     def get_retriever(self, k: int = 5):
-        """返回检索器，k 是每次检索返回的最大条数"""
+        """普通检索"""
         return self.vector_store.as_retriever(search_kwargs={"k": k})
 
     def search_with_score(self, query: str, k: int = 5):
-        """带分数的语义检索，用于阈值过滤"""
+        """带分数的语义检索"""
         return self.vector_store.similarity_search_with_score(query, k=k)

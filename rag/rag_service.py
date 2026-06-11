@@ -1,5 +1,5 @@
 """
-RAG 回答服务：改写 → 检索 → 过滤 → 重排序 → 拼 prompt → 带引用回答
+RAG 回答服务：改写 → 粗筛 → 过滤 → 精排 → 拼 prompt → LLM
 """
 from langchain_core.output_parsers import StrOutputParser
 from langchain_core.prompts import PromptTemplate
@@ -8,18 +8,19 @@ from rag.vector_store import VectorStoreService
 from model.factory import chat_model
 from sentence_transformers import CrossEncoder
 from pathlib import Path
+import re
 
 
 class RagService:
-    MAX_DISTANCE = 0.8       # 距离阈值：超过此值视为不相关
-    INITIAL_K = 20           # 粗筛取 20 条
-    RERANK_TOP_K = 3         # 精排后取 3 条
+    MAX_DISTANCE = 0.8
+    INITIAL_K = 5
+    RERANK_TOP_K = 3
 
     def __init__(self):
         self.vector_store = VectorStoreService()
         self.model = chat_model
 
-        # 重排序模型：Cross-Encoder 精排（中文，278MB，启动时加载一次）
+        # 重排序模型（中文，启动加载一次）
         self.reranker = CrossEncoder("BAAI/bge-reranker-base")
 
         prompt_path = Path(__file__).parent.parent / "prompts" / "rag_prompt.txt"
@@ -27,8 +28,9 @@ class RagService:
             prompt_path.read_text(encoding="utf-8")
         )
 
+    # 进阶1：问题重写
     def _rewrite_query(self, user_query: str) -> str:
-        """Query Rewriting：口语问题 → 精确检索关键词"""
+        """把用户口语问题改写成精确检索关键词"""
         prompt = f"""你是一个搜索优化助手。把以下用户问题改写成更适合向量检索的关键词。
 规则：
 1. 去掉口语化表达（"我想问""帮我看看"），提取核心概念
@@ -45,10 +47,20 @@ class RagService:
                 return rewritten
         except Exception:
             pass
-        return user_query
+        return user_query  # 改写失败用原文兜底
 
-    def _rerank(self, query: str, docs: list[Document]) -> list[Document]:
-        """Rerank 重排序：Cross-Encoder 逐条打分，取最高的 top_k 条"""
+    # 进阶3：引用验证
+    def _verify_citations(self, answer: str, valid_count: int) -> dict:
+        """检查 LLM 引用的【来源N】是否真实存在"""
+        cited = set(int(n) for n in re.findall(r'【来源(\d+)】', answer))
+        fake = [n for n in cited if n > valid_count]
+        if fake:
+            return {"pass": False, "fake": fake}
+        return {"pass": True}
+
+    # 进阶2：Rerank 重排序
+    def _rerank(self, query: str, docs: list) -> list:
+        """Cross-Encoder 逐条打分，取最高分的 top_k 条"""
         if len(docs) <= self.RERANK_TOP_K:
             return docs
 
@@ -58,12 +70,12 @@ class RagService:
         return [doc for doc, _ in ranked[:self.RERANK_TOP_K]]
 
     def search(self, query: str) -> str:
-        """完整 RAG 流程：改写 → 粗筛 → 过滤 → 精排 → 拼 prompt → LLM"""
+        """完整 RAG：改写 → 粗筛 → 过滤 → 精排 → LLM 生成"""
 
         # 1. Query Rewriting
         search_query = self._rewrite_query(query)
 
-        # 2. 向量检索：粗筛 20 条
+        # 2. 向量粗筛 20 条
         docs_with_score = self.vector_store.search_with_score(search_query, k=self.INITIAL_K)
 
         # 3. 距离阈值过滤
@@ -73,15 +85,25 @@ class RagService:
         if not valid:
             return "当前题库暂未收录该问题。\n建议：换个方向提问，或联系管理员补充题目。"
 
-        # 5. Rerank 精排：Cross-Encoder 从候选里挑最好的 3 条
+        # 5. Rerank 精排取 top 3
         top_docs = self._rerank(query, valid)
 
-        # 6. 拼接参考资料（带来源信息）
+        # 6. 拼参考资料
         context = ""
         for i, doc in enumerate(top_docs, start=1):
             source = doc.metadata.get("source", "未知")
             context += f"【来源{i}】出处: {source}\n内容: {doc.page_content}\n\n"
 
-        # 7. LLM 生成
+        # 7. LLM 生成 + 引用验证
         chain = self.prompt_template | self.model | StrOutputParser()
-        return chain.invoke({"input": query, "context": context})
+        answer = chain.invoke({"input": query, "context": context})
+
+        # 8. 验证引用是否真实存在
+        check = self._verify_citations(answer, len(top_docs))
+        if not check["pass"]:
+            fixed_context = (
+                f"{context}\n\n注意：你上一轮回答引用了不存在的来源编号：{check['fake']}。"
+                f"可用的来源编号范围是 1 到 {len(top_docs)}。请移除虚假引用后重新生成。"
+            )
+            answer = chain.invoke({"input": query, "context": fixed_context})
+        return answer

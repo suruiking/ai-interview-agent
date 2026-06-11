@@ -1,0 +1,93 @@
+=== AI应用开发面试题库 ===
+
+## 一、LLM 基础原理
+
+Q: 请解释 Transformer 的核心结构
+A: Transformer 由 Encoder 和 Decoder 两个模块组成。Encoder 负责理解输入序列，通过 Self-Attention 机制让每个词看到全句所有词；Decoder 负责自回归生成输出。现在的 GPT 类模型只用 Decoder 部分（Decoder-Only），因为一切任务都可以统一为"给定前缀继续生成"。核心机制包括 Self-Attention（让每个词计算与全句所有词的关联权重）、Multi-Head Attention（从多个角度捕捉不同类型的关系）、Positional Encoding（注入位置信息，Attention 本身不识别顺序）。
+
+Q: Self-Attention 的计算过程是怎样的？
+A: 输入 X 乘以三个权重矩阵得到 Q(Query)、K(Key)、V(Value)。Q 和 K 做点积得到关联分数矩阵，除以 sqrt(dk) 防止数值过大，Softmax 归一化为概率，最后乘以 V 做加权求和。公式为 Attention(Q,K,V) = softmax(QK^T/sqrt(dk))V。Q 代表"我在找什么"，K 代表"我是什么"，V 代表"我携带的信息"，三者分工使检索和输出分离。
+
+Q: 什么是 Tokenizer？BPE 是怎么工作的？
+A: Tokenizer 是把文字转成模型能识别的数字 ID 的翻译官。BPE（Byte Pair Encoding）是主流方案：从字符级开始，统计最频繁的相邻字符对，合并成新的 token，重复直到词汇表达目标大小。高频词保持完整（如"人工智能"是一个 token），低频词拆成子词。中文一个汉字通常 1-2 个 token，英文一个单词可能 1-3 个 token。
+
+Q: GPT 的训练流程是怎样的？
+A: 分三个阶段。1) 预训练（Pre-training）：在海量互联网文本上做 Next Token Prediction，学会语言能力和世界知识，烧掉 90% 以上成本。2) SFT（监督微调）：用几万条人工标注的问答对训练，学会对话格式。3) RLHF（人类反馈强化学习）：让人对模型多个回答排序打分，训练奖励模型，再用 PPO 算法优化模型，学会什么是好的回答。
+
+Q: Decoder-Only 架构为什么成为主流？
+A: 三个原因。1) 一切任务统一为"给定前缀继续生成"，不需要为不同任务设计不同结构。2) Causal Attention 简单，每个 token 只能看自己及之前的，天然适合自回归生成。3) 同样的算力下训练效率最高，OpenAI 的实践经验是 Decoder-Only 在大规模下性能最好。
+
+Q: Embedding 模型和 LLM 有什么不同？
+A: Embedding 模型输出固定长度向量（如 768 维），LLM 输出可变长文字序列。Embedding 模型专门优化"语义相近文本向量距离近"这个目标，用于语义相似度计算和检索。LLM 优化 Next Token Prediction，用于文本生成和理解。两者训练目标不同，不能相互替代。
+
+## 二、Agent 与 Function Calling
+
+Q: Agent 和普通 LLM 调用的本质区别是什么？
+A: 普通调用是一轮结束（用户输入→LLM→输出）。Agent 有一个循环：LLM 思考→决定调工具→系统执行工具→结果喂回→LLM 再思考→...→最终输出。关键差异是 Agent 在循环里自主决定什么时候停、什么时候调工具。Agent 循环的核心组件：LLM 大脑、工具集、判断逻辑（ReAct）、停止条件。
+
+Q: 请解释 ReAct 范式的完整流程
+A: ReAct = Reasoning + Acting。流程是 Thought→Action→Observation→Re-think→...→Final Answer。LLM 先思考需要什么信息（Thought），决定调用哪个工具（Action），系统执行工具返回结果（Observation），LLM 根据观察再思考（Re-think），决定是否需要再调工具，直到信息足够给出最终回答。比纯 CoT（Chain-of-Thought）好的地方是可以借助外部工具验证，减少幻觉。
+
+Q: Function Calling 是怎么工作的？
+A: 本质是 LLM 决定调哪个工具。用户输入后 LLM 不输出文字，而是输出标准 JSON 对象：{name: "get_weather", arguments: {city: "深圳"}}。系统拿到 JSON 后执行对应函数，结果拼回对话历史当 Observation。跟手动解析的区别：Function Calling 是 API 原生支持的，模型输出格式更稳定，不用正则自己去匹配。
+
+Q: 你了解哪些 Agent 范式？
+A: 四种核心范式。1) ReAct：边想边做，走一步看一步。2) Reflection：回答完自审一遍，发现问题修正后重新输出。3) Plan-and-Execute：先列出完整计划再逐步执行。4) Multi-Agent：多个 Agent 各管一摊分工协作。还有 Pipeline（固定顺序执行）适合流程确定的场景。范式是设计思想，代码实现可以用 LangChain、LangGraph 或自己手写循环。
+
+Q: Agent 循环什么时候停下来？如果 LLM 一直不停调用工具怎么办？
+A: 三道防线。1) max_iterations 硬限制：超过 N 轮强制终止。2) timeout 超时：单次 Agent 调用设 deadline。3) prompt 兜底：提示"如果信息足够请直接回答"。更重要的是循环里去重检测——同一个工具同一参数调过就拦截，从源头防止死循环。
+
+Q: Tool Calling 和 MCP 协议的关系是什么？
+A: Tool Calling 是 Agent 调用工具的能力。MCP（Model Context Protocol）是 Anthropic 提出的标准化工具通信协议——工具提供方按 MCP 规范暴露接口，任何支持 MCP 的 Agent 直接对接。分 MCP Server（暴露工具/资源）和 MCP Client（Agent 侧发现并调用）。MCP 把工具定义从代码中解耦出来，运行时动态发现外部工具，跟内置工具统一管理。
+
+## 三、RAG（检索增强生成）
+
+Q: RAG 的完整流程是怎样的？
+A: 六步。1) Load：文件转 Document 对象。2) Chunk：切块（chunk_size 是检索粒度和语义完整性的平衡）。3) Embed：文本转向量。4) Retrieve：向量检索 Top-K。5) Rerank：精排模型重新打分提高命中率。6) Context+Prompt+Answer：拼接后 LLM 生成，并标注来源编号。
+
+Q: chunk_size 怎么定的？
+A: 没有万能值，要根据文档结构实测。太小（50字）→语义碎片化，检索漏；太大（2000字）→噪音多，不精准。FAQ 类型知识库一般 200-300 字符比较合适。原则：检索粒度和语义完整性的平衡，overlap 20 字防止关键句在分界处被切断。
+
+Q: 向量检索和关键词检索（BM25）有什么区别？
+A: 向量检索用语义相似度找"意思相近"的内容，同义词能匹配到。关键词检索用词频匹配精确搜型号、编号。生产环境用混合检索——两边结果合并排序，互补。Reranker 做精排弥补语义检索的粗糙。
+
+Q: RAG 系统怎么处理检索不到的情况？
+A: 三层防护。1) 相似度阈值过滤：ChromaDB 返回的分数低于 0.6 的丢弃，宁可不知道也别瞎说。2) prompt 约束：明确写"只根据参考资料回答，找不到就说不知道"。3) 代码验证层：检查 LLM 回答中引用的来源编号是否真的存在，虚假引用要求重生成。
+
+Q: RAG 中的"增强"具体增了什么？
+A: 四个维度。1) 知识增强：LLM 没学过的或记不准的外部补上。2) 时效增强：检索结果可是最新的，不等模型更新。3) 证据增强：回答能引用来源编号和文件名，可溯源。4) 领域增强：专业文档模型没训过，检索来补。
+
+Q: 向量库在 RAG 中的角色是什么？
+A: 向量库是检索层最主流的实现方式。把文本 Embedding 后存进去，查询时用余弦相似度找最近邻居。但不绑定向量库——关键词 BM25、SQL 数据库、搜索引擎 API 都能做检索。向量库解决的是语义检索问题，不是 RAG 的全部。
+
+## 四、Prompt 工程
+
+Q: 你用过哪些 Prompt 工程技术？
+A: 六个层次。1) 角色+职责+约束（基础框架）。2) Few-Shot 示例（给 2-5 个例子教会格式）。3) Chain-of-Thought（让模型写推理过程再给答案）。4) ReAct（思考→行动→观察）。5) 结构化输出（要求 JSON 格式）。6) 动态提示词（根据不同场景切换不同模板）。
+
+Q: 提示词太长会有什么问题？怎么处理？
+A: 四个代价：费用高（输入 token 也计费）、性能下降（Lost in the Middle 现象）、推理变慢（Attention O(n²)）、截断风险（超过窗口就丢早期内容）。处理方案：滑动窗口裁剪、摘要压缩旧对话、RAG 知识不进 prompt 用时检索、分块处理长文档。
+
+## 五、Python 工程与异步
+
+Q: async/await 的核心是什么？
+A: async def 申明协程，await 让当前协程挂起等结果但事件循环不阻塞，CPU 继续处理其他协程。IO 密集任务（网络请求、文件读写）异步优势最大。常用模式：create_task（后台执行不等结果）、gather（并发跑全完成才返回）、Semaphore（限制并发数）、Queue（异步桥接）。
+
+Q: SSE 和 WebSocket 的区别？什么场景选哪个？
+A: SSE 是单向（服务端→客户端），走 HTTP 协议，浏览器内置自动重连。WebSocket 双向通信，需要升级协议，要自己实现重连。AI 流式输出场景选 SSE 就够了——前端只需收生成进度，不需要发实时消息，更简单。
+
+## 六、Agent 工程化
+
+Q: Agent 工程化常见的四类问题是什么？
+A: 1) 工具失败：try/except 分类返回可操作信息（区分超时、权限、网络），不要一个"失败了"甩给 LLM。2) 空结果：区分"没查到""不可信""系统崩了"，三种不同返回。3) 重复调用：call_hash 去重 + prompt 提示 LLM 直接回答。4) 幻觉引用：代码验证 LLM 引用的编号是否真的存在，不存在就让 LLM 重新生成。
+
+Q: AI 应用开发的"环境服务"包括哪些？
+A: 权限检查（PreToolUse Hook 堵塞危险操作）、Hook 插件系统（扩展点挂函数，不改循环）、上下文压缩（L1 截断 + L2 旧结果占位符 + L3 大结果落盘 + L4 LLM 摘要）、长期记忆（对话中提取关键信息存向量库，下次检索注入）、Prompt 动态装配（按当前状态按需拼块）、错误恢复（max_tokens 续写 + 429/529 指数退避重试）、Cron 定时调度（后台线程定时触发 Agent 自动干活）。
+
+Q: 长期记忆怎么实现？
+A: 分三层。短期上下文就是 messages 列表，做滑动窗口+旧消息摘要。会话记忆用 LLM 从对话中提取关键事实存成 dict，每轮拼进 system prompt。长期记忆用向量库——每条记忆 Embedding 后写入，下次对话先语义检索再拼入上下文。核心流程：对话中提取→打分→去重检查→写入→下次检索→注入。
+
+## 七、系统设计
+
+Q: 你怎么设计一个 AI 面试辅导 Agent？
+A: 核心架构：用户上传简历 PDF + 岗位 JD → RAG 管道向量化存入 ChromaDB → Agent 根据职位要求从题库检索匹配的面试题 → 用户回答 → Agent 从准确性、完整度、结构三个维度点评 → 长期记忆记住用户的弱项，下次优先出对应题。Harness 部分：自己写 agent_loop 循环，用 DeepSeek 当大脑，工具层挂 RAG 搜索 + 评分 + 记忆三个模块。环境服务加权限 Hook 防删文件，上下文压缩防长对话崩，Cron 每天 9 点提醒练习。

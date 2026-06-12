@@ -10,6 +10,27 @@ from agent.context_compact import prepare_context
 
 MAX_TURNS = 8
 
+# ===== s03：权限三道门 =====
+_DENY_LIST = ["delete", "drop", "rm ", "sudo", "shutdown"]
+_DESTRUCTIVE_TOOLS = ["write_file", "edit_file", "bash"]  # 本 Agent 没这些工具，但预留
+
+def _check_permission(tool_name: str, tool_args: dict) -> str | None:
+    """三道门安全检查。返回 None=通过，返回字符串=拒绝原因"""
+    # ① 硬黑名单
+    for keyword in _DENY_LIST:
+        if keyword in str(tool_args).lower():
+            return f"操作含危险关键词 '{keyword}'"
+
+    # ② 破坏性工具（当前 Agent 不会用到，但架构预留）
+    if tool_name in _DESTRUCTIVE_TOOLS:
+        return f"工具 '{tool_name}' 当前不在允许列表中"
+
+    # ③ 敏感操作 flag
+    if tool_name == "analyze_resume" and len(str(tool_args.get("resume_text", ""))) > 10000:
+        return "简历文本过长（>10000字），请精简后再试"
+
+    return None  # 通过
+
 
 class HarnessAgent:
 
@@ -119,14 +140,19 @@ class HarnessAgent:
                 tool_name = tc["name"]
                 tool_args = tc["arguments"]
 
-                handler = TOOL_HANDLERS.get(tool_name)
-                if handler:
-                    try:
-                        result = str(handler(**tool_args))
-                    except Exception as e:
-                        result = f"工具执行失败: {e}"
+                # s03：权限三道门 — 预防 LLM 幻觉调用危险操作
+                blocked = _check_permission(tool_name, tool_args)
+                if blocked:
+                    result = f"权限拒绝：{blocked}"
                 else:
-                    result = f"未知工具: {tool_name}"
+                    handler = TOOL_HANDLERS.get(tool_name)
+                    if handler:
+                        try:
+                            result = str(handler(**tool_args))
+                        except Exception as e:
+                            result = f"工具执行失败: {e}"
+                    else:
+                        result = f"未知工具: {tool_name}"
 
                 # 结果喂回（带 tool_call_id 配对）
                 messages.append({

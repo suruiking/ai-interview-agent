@@ -6,6 +6,7 @@ from model.factory import chat_model
 from utils.prompt_loader import load_system_prompts
 from agent.tools.harness_tools import TOOLS, TOOL_HANDLERS
 from memory.memory_manager import read_memory_index, extract_memories
+from agent.context_compact import prepare_context
 
 MAX_TURNS = 8
 
@@ -88,6 +89,9 @@ class HarnessAgent:
         ]
 
         for _ in range(MAX_TURNS):
+            # 每轮前压缩上下文
+            messages = prepare_context(messages)
+
             # 调 LLM
             response = self.model.invoke(
                 messages,

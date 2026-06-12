@@ -19,7 +19,11 @@ class RagService:
         self.vector_store = VectorStoreService()
         self.model = chat_model
 
-        self.reranker = CrossEncoder("BAAI/bge-reranker-base")
+        # Reranker 加载失败自动降级（不用 Rerank 也能检索）
+        try:
+            self.reranker = CrossEncoder("BAAI/bge-reranker-base")
+        except Exception:
+            self.reranker = None
 
         prompt_path = Path(__file__).parent.parent / "prompts" / "rag_prompt.txt"
         self.prompt_template = PromptTemplate.from_template(

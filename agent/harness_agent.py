@@ -1,20 +1,28 @@
 """
-自研 Agent 引擎：ReAct 循环 + 工具分发 + 流式输出
-替掉 LangChain create_agent，核心只有 60 行。
+自研 Agent 引擎：ReAct 循环 + 工具分发 + 流式输出 + 长期记忆
 """
 import json
 from model.factory import chat_model
 from utils.prompt_loader import load_system_prompts
 from agent.tools.harness_tools import TOOLS, TOOL_HANDLERS
+from memory.memory_manager import read_memory_index, extract_memories
 
-MAX_TURNS = 8  # 最多 8 轮工具调用
+MAX_TURNS = 8
 
 
 class HarnessAgent:
 
     def __init__(self):
-        self.system_prompt = load_system_prompts()
         self.model = chat_model
+        base_prompt = load_system_prompts()
+        memories = read_memory_index()
+        if memories:
+            base_prompt += (
+                f"\n\n## 长期记忆（用户历史和偏好）\n"
+                f"{memories}\n"
+                f"根据以上记忆调整出题方向和点评重点。"
+            )
+        self.system_prompt = base_prompt
 
     def _build_tools(self) -> list[dict]:
         """TOOLS → OpenAI tools 格式"""
@@ -123,5 +131,13 @@ class HarnessAgent:
                     "tool_call_id": tc.get("id", ""),
                     "content": result,
                 })
+
+        # 对话结束后提取长期记忆
+        dialogue = [m["content"] if isinstance(m.get("content"), str)
+                    else str(m.get("content", "")) for m in messages]
+        try:
+            extract_memories(dialogue)
+        except Exception:
+            pass
 
         yield "\n\n> 以上是面试辅导 Agent 的回答。继续练习或问我新的问题。"

@@ -9,9 +9,7 @@
 6. 连接MCP：需要外部工具时调 connect_mcp 连接工具服务器
 
 ### MCP 工具服务器
-- question-bank：题库（mock），提供 get_random_question, get_hot_topics
-- code-runner：代码沙箱（mock），提供 run_python
-- coding-tools：真实进程，提供 count_lines(统计行数), check_syntax(语法检查), run_tests(运行测试)
+- coding-tools：真实 MCP 服务器（stdio 进程），提供 count_lines(统计代码行数), check_syntax(Python 语法检查), run_tests(运行 pytest 测试)
 
 ### 工具使用规则
 1. 必须直接调用工具，不要用文字描述你要调什么工具

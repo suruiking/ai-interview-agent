@@ -54,10 +54,13 @@ class RagService:
     # 进阶2：Rerank 重排序
     def _rerank(self, query: str, docs: list) -> list:
         """Cross-Encoder 逐条打分，取最高分的 top_k 条"""
-        if len(docs) <= self.RERANK_TOP_K:
-            return docs
+        if len(docs) <= self.RERANK_TOP_K or self.reranker is None:
+            return docs[:self.RERANK_TOP_K]
         pairs = [[query, doc.page_content] for doc in docs]
-        scores = self.reranker.predict(pairs)
+        try:
+            scores = self.reranker.predict(pairs)
+        except Exception:
+            return docs[:self.RERANK_TOP_K]  # Reranker 挂了直接用向量排序结果
         ranked = sorted(zip(docs, scores), key=lambda x: x[1], reverse=True)
         return [doc for doc, _ in ranked[:self.RERANK_TOP_K]]
 

@@ -121,6 +121,7 @@ class HarnessAgent:
 
             # 没调工具 → 最终回答，流式吐出
             tool_calls = self._parse_tool_calls(response)
+            print(f"  [DEBUG] tool_calls={tool_calls}", flush=True)
             if not tool_calls:
                 if content:
                     yield content + "\n"
@@ -146,6 +147,8 @@ class HarnessAgent:
                     if handler:
                         try:
                             result = str(handler(**tool_args))
+                        except TypeError as e:
+                            result = f"工具参数错误: {e}。参数: {tool_args}"
                         except Exception as e:
                             result = f"工具执行失败: {e}"
                     else:

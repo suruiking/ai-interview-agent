@@ -4,7 +4,8 @@
 import json
 from model.factory import chat_model
 from utils.prompt_loader import load_system_prompts
-from agent.tools.harness_tools import TOOLS, TOOL_HANDLERS
+from agent.tools.harness_tools import TOOLS as BUILTIN_TOOLS, TOOL_HANDLERS as BUILTIN_HANDLERS
+from mcp.mcp_manager import assemble_tool_pool
 from memory.memory_manager import read_memory_index, extract_memories
 from agent.context_compact import prepare_context
 
@@ -46,18 +47,13 @@ class HarnessAgent:
             )
         self.system_prompt = base_prompt
 
-    def _build_tools(self) -> list[dict]:
-        """TOOLS → OpenAI tools 格式"""
+    def _build_tools_from(self, tools: list[dict]) -> list[dict]:
+        """工具定义 → OpenAI tools 格式"""
         return [
-            {
-                "type": "function",
-                "function": {
-                    "name": t["name"],
-                    "description": t["description"],
-                    "parameters": t["input_schema"],
-                },
-            }
-            for t in TOOLS
+            {"type": "function", "function": {
+                "name": t["name"], "description": t["description"],
+                "parameters": t["input_schema"]}}
+            for t in tools
         ]
 
     def _parse_tool_calls(self, response) -> list[dict]:
@@ -110,13 +106,14 @@ class HarnessAgent:
         ]
 
         for _ in range(MAX_TURNS):
-            # 每轮前压缩上下文
+            # 每轮前压缩上下文 + 拼动态工具池（MCP 连了自动多工具）
             messages = prepare_context(messages)
+            tools, handlers = assemble_tool_pool(BUILTIN_TOOLS, BUILTIN_HANDLERS)
 
             # 调 LLM
             response = self.model.invoke(
                 messages,
-                tools=self._build_tools(),
+                tools=self._build_tools_from(tools),
                 tool_choice="auto",
             )
 
@@ -145,7 +142,7 @@ class HarnessAgent:
                 if blocked:
                     result = f"权限拒绝：{blocked}"
                 else:
-                    handler = TOOL_HANDLERS.get(tool_name)
+                    handler = handlers.get(tool_name)
                     if handler:
                         try:
                             result = str(handler(**tool_args))

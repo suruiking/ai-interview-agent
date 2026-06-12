@@ -5,6 +5,7 @@
 import random
 from rag.rag_service import RagService
 from model.factory import chat_model
+from mcp.mcp_manager import connect_mcp
 
 rag = RagService()
 
@@ -143,6 +144,15 @@ TOOLS = [
         "description": "列出当前题库覆盖的所有知识点方向。",
         "input_schema": {"type": "object", "properties": {}, "required": []},
     },
+    {
+        "name": "connect_mcp",
+        "description": "连接外部 MCP 工具服务器（question-bank: 题库服务器, code-runner: 代码执行沙箱）。连上后自动获得服务器上的工具。",
+        "input_schema": {
+            "type": "object",
+            "properties": {"name": {"type": "string", "description": "服务器名"}},
+            "required": ["name"],
+        },
+    },
 ]
 
 # ==================== TOOL_HANDLERS：执行分发字典 ====================
@@ -152,4 +162,5 @@ TOOL_HANDLERS = {
     "evaluate_answer": evaluate_answer,
     "analyze_resume": analyze_resume,
     "get_topics": get_topics,
+    "connect_mcp": connect_mcp,
 }

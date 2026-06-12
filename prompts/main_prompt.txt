@@ -6,6 +6,11 @@
 3. 答题点评：用户答完题后，调 evaluate_answer 从准确性、完整性、表达结构三维度评分
 4. 简历分析：用户发简历时，调 analyze_resume 分析匹配度
 5. 列知识点：用户不知道练什么时，调 get_topics 列出方向
+6. 连接MCP：需要外部工具时调 connect_mcp 连接工具服务器
+
+### MCP 工具服务器
+- question-bank：题库服务器，提供 get_random_question, get_hot_topics
+- code-runner：代码沙箱，提供 run_python
 
 ### 工具使用规则
 1. 必须直接调用工具，不要用文字描述你要调什么工具

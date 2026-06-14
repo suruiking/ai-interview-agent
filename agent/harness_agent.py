@@ -121,11 +121,27 @@ class HarnessAgent:
 
             # 没调工具 → 最终回答，流式吐出
             tool_calls = self._parse_tool_calls(response)
-            print(f"  [DEBUG] tool_calls={tool_calls}", flush=True)
             if not tool_calls:
                 if content:
                     yield content + "\n"
                 break
+
+            # 先输出 LLM 的思考文字
+            if content:
+                yield content + "\n\n"
+
+            # 输出工具调用提示
+            for tc in tool_calls:
+                tool_name = tc["name"]
+                tool_icons = {
+                    "rag_search": "🔍 正在从题库搜索相关知识...",
+                    "ask_question": "🎯 正在生成面试题...",
+                    "evaluate_answer": "📊 正在评分和点评...",
+                    "analyze_resume": "📋 正在分析简历匹配度...",
+                    "get_topics": "📚 正在列出知识点...",
+                    "connect_mcp": "🔌 正在连接外部工具服务器...",
+                }
+                yield tool_icons.get(tool_name, f"⚙️ 正在执行 {tool_name}...") + "\n\n"
 
             # 存助手消息（带 tool_calls）
             msg = {"role": "assistant", "content": content or ""}
@@ -138,9 +154,21 @@ class HarnessAgent:
                 tool_name = tc["name"]
                 tool_args = tc["arguments"]
 
-                # DeepSeek 偶发不填参数 → 自动补 query
-                if tool_name == "rag_search" and not tool_args.get("query"):
-                    tool_args["query"] = query  # 用用户原始问题兜底
+                # DeepSeek 偶发不填参数 → 自动补
+                if not any(tool_args.values()):  # 所有参数都为空
+                    if tool_name == "rag_search":
+                        tool_args["query"] = query
+                    elif tool_name == "analyze_resume" and "resume_text" in str(
+                        self._build_tools_from(
+                            [t for t in BUILTIN_TOOLS if t["name"] == "analyze_resume"]
+                        )
+                    ):
+                        tool_args["resume_text"] = query
+                    elif tool_name == "ask_question":
+                        tool_args["topic"] = ""
+                    elif tool_name == "evaluate_answer":
+                        tool_args["question"] = "最近一道题"
+                        tool_args["user_answer"] = query
 
                 # s03：权限三道门 — 预防 LLM 幻觉调用危险操作
                 blocked = _check_permission(tool_name, tool_args)

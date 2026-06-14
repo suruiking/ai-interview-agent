@@ -1,4 +1,9 @@
+- [function-calling-practice-request](function-calling-practice-request.md) — 用户主动要求出一道Function Calling相关的面试题进行练习
 - [mcp-tool-calling-question](mcp-tool-calling-question.md) — 用户询问Tool Calling和MCP协议的关系，对MCP协议有学习兴趣
+- [rag-concept-query](rag-concept-query.md) — 用户对RAG概念有持续学习兴趣，即使已了解基础概念仍会再次询问
 - [rag-concept-question](rag-concept-question.md) — 用户主动询问RAG概念，对RAG有明确学习需求
 - [rag-interview-question](rag-interview-question.md) — 用户要求出一道RAG相关的面试题
 - [rag-knowledge-requirement](rag-knowledge-requirement.md) — 用户对RAG有明确学习需求，主动询问概念并希望获得面试题练习
+- [rag-learning-interest](rag-learning-interest.md) — 用户对RAG有持续且强烈的学习兴趣，即使已了解基础概念仍会再次询问
+- [rag-weakness](rag-weakness.md) — 用户明确表示RAG是其弱势领域，需要重点辅导
+- [resume-analysis-request](resume-analysis-request.md) — 用户已提交简历并希望获得简历分析和面试辅导

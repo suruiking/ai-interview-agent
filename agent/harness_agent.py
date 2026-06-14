@@ -138,6 +138,10 @@ class HarnessAgent:
                 tool_name = tc["name"]
                 tool_args = tc["arguments"]
 
+                # DeepSeek 偶发不填参数 → 自动补 query
+                if tool_name == "rag_search" and not tool_args.get("query"):
+                    tool_args["query"] = query  # 用用户原始问题兜底
+
                 # s03：权限三道门 — 预防 LLM 幻觉调用危险操作
                 blocked = _check_permission(tool_name, tool_args)
                 if blocked:

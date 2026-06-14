@@ -1,4 +1,4 @@
 - [mcp-tool-calling-question](mcp-tool-calling-question.md) — 用户询问Tool Calling和MCP协议的关系，对MCP协议有学习兴趣
-- [rag-concept-question](rag-concept-question.md) — 用户主动询问RAG概念，表明对RAG有学习需求
+- [rag-concept-question](rag-concept-question.md) — 用户主动询问RAG概念，对RAG有明确学习需求
 - [rag-interview-question](rag-interview-question.md) — 用户要求出一道RAG相关的面试题
 - [rag-knowledge-requirement](rag-knowledge-requirement.md) — 用户对RAG有明确学习需求，主动询问概念并希望获得面试题练习

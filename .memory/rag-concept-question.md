@@ -1,7 +1,7 @@
 ---
 name: rag-concept-question
-description: 用户主动询问RAG概念，表明对RAG有学习需求
+description: 用户主动询问RAG概念，对RAG有明确学习需求
 type: preference
 ---
 
-用户在对话中提问'什么是rag'，表明用户正在主动学习RAG相关知识，需要概念解释
+用户在对话中直接询问'什么是rag'，表明希望系统解释RAG（检索增强生成）的概念和流程。

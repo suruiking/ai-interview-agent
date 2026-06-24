@@ -6,6 +6,9 @@ import json
 import time
 from pathlib import Path
 from model.factory import chat_model
+from utils.logger import get_logger
+
+logger = get_logger("compact")
 
 TRANSCRIPT_DIR = Path(__file__).parent.parent / ".transcripts"
 KEEP_RECENT = 3          # L2：保留最近 3 条完整 tool_result
@@ -102,7 +105,7 @@ def prepare_context(messages: list) -> list:
     messages[:] = snip_compact(messages)          # L1：消息数量裁剪
 
     if _estimate_size(messages) > CONTEXT_LIMIT:
-        print("  [compact] 触发 L4 LLM 摘要...")
+        logger.warning("触发 L4 LLM 摘要压缩（消息总大小 %d 字）", _estimate_size(messages))
         messages[:] = compact_history(messages)
 
     return messages

@@ -7,6 +7,9 @@ import json
 import subprocess
 import sys
 from pathlib import Path
+from utils.logger import get_logger
+
+logger = get_logger("mcp")
 
 mcp_clients: dict[str, "MCPClient"] = {}
 _DISALLOWED = re.compile(r'[^a-zA-Z0-9_-]')
@@ -86,13 +89,17 @@ def connect_mcp(name: str) -> str:
     if name == "coding-tools":
         server_path = Path(__file__).parent / "coding_server.py"
         try:
+            logger.info("正在连接 MCP 服务器: %s", name)
             client = StdioMCPClient(name, [sys.executable, str(server_path)])
             mcp_clients[name] = client
             tool_names = [t["name"] for t in client.tools]
+            logger.info("MCP '%s' 连接成功，发现 %d 个工具: %s", name, len(client.tools), tool_names)
             return f"已连接 '{name}'。发现 {len(client.tools)} 个工具: {tool_names}"
         except Exception as e:
+            logger.error("MCP '%s' 连接失败: %s", name, e)
             return f"连接 '{name}' 失败: {e}"
 
+    logger.warning("MCP 服务器 '%s' 不在注册表中", name)
     return f"未知服务器 '{name}'。当前可用: coding-tools"
 
 

@@ -8,6 +8,9 @@ from model.factory import chat_model
 from sentence_transformers import CrossEncoder
 from pathlib import Path
 import re
+from utils.logger import get_logger
+
+logger = get_logger("rag")
 
 
 class RagService:
@@ -24,6 +27,7 @@ class RagService:
             self.reranker = CrossEncoder("BAAI/bge-reranker-base")
         except Exception:
             self.reranker = None
+            logger.warning("BGE Reranker 加载失败，检索将跳过精排")
 
         prompt_path = Path(__file__).parent.parent / "prompts" / "rag_prompt.txt"
         self.prompt_template = PromptTemplate.from_template(
@@ -78,19 +82,26 @@ class RagService:
 
         # 1. Query Rewriting
         search_query = self._rewrite_query(query)
+        if search_query != query:
+            logger.debug("查询改写: %s → %s", query[:80], search_query[:80])
 
         # 2. 向量检索
         docs_with_score = self.vector_store.search_with_score(search_query, k=self.INITIAL_K)
+        logger.debug("向量检索: %d 条候选, 最高分 %.3f",
+                     len(docs_with_score),
+                     docs_with_score[0][1] if docs_with_score else 0)
 
         # 3. 距离阈值过滤
         valid = [doc for doc, score in docs_with_score if score <= self.MAX_DISTANCE]
 
         # 4. 空结果兜底
         if not valid:
+            logger.info("检索空结果，阈值过滤后无匹配（阈值=%.2f）", self.MAX_DISTANCE)
             return "当前题库暂未收录该问题。\n建议：换个方向提问，或联系管理员补充题目。"
 
         # 5. Rerank 精排取 top 3
         top_docs = self._rerank(query, valid)
+        logger.debug("精排后保留 %d 条", len(top_docs))
 
         # 6. 拼参考资料
         context = ""
@@ -105,9 +116,12 @@ class RagService:
         # 8. 引用验证
         check = self._verify_citations(answer, len(top_docs))
         if not check["pass"]:
+            logger.warning("发现虚假引用 %s，触发重生成", check["fake"])
             fixed_context = (
                 f"{context}\n\n注意：上一轮引用了不存在的来源 {check['fake']}。"
                 f"可用来源范围 1-{len(top_docs)}。请移除虚假引用后重新生成。"
             )
             answer = chain.invoke({"input": query, "context": fixed_context})
+
+        logger.info("RAG 检索完成，回答 %d 字", len(answer))
         return answer

@@ -8,7 +8,9 @@ from agent.tools.harness_tools import TOOLS as BUILTIN_TOOLS, TOOL_HANDLERS as B
 from mcp.mcp_manager import assemble_tool_pool
 from memory.memory_manager import read_memory_index, extract_memories
 from agent.context_compact import prepare_context
+from utils.logger import get_logger
 
+logger = get_logger("agent")
 MAX_TURNS = 8
 
 # ===== s03：权限三道门 =====
@@ -45,6 +47,7 @@ class HarnessAgent:
                 f"{memories}\n"
                 f"根据以上记忆调整出题方向和点评重点。"
             )
+            logger.info("已注入长期记忆")
         self.system_prompt = base_prompt
 
     def _build_tools_from(self, tools: list[dict]) -> list[dict]:
@@ -99,13 +102,14 @@ class HarnessAgent:
 
     def execute_stream(self, query: str):
         """流式执行，跟 Streamlit 兼容"""
+        logger.info("收到用户输入（%d 字）", len(query))
 
         messages = [
             {"role": "system", "content": self.system_prompt},
             {"role": "user", "content": query},
         ]
 
-        for _ in range(MAX_TURNS):
+        for turn in range(MAX_TURNS):
             # 每轮前压缩上下文 + 拼动态工具池（MCP 连了自动多工具）
             messages = prepare_context(messages)
             tools, handlers = assemble_tool_pool(BUILTIN_TOOLS, BUILTIN_HANDLERS)
@@ -122,6 +126,7 @@ class HarnessAgent:
             # 没调工具 → 最终回答，流式吐出
             tool_calls = self._parse_tool_calls(response)
             if not tool_calls:
+                logger.info("LLM 直接回答（第 %d 轮，%d 字）", turn + 1, len(content or ""))
                 if content:
                     yield content + "\n"
                 break
@@ -141,6 +146,8 @@ class HarnessAgent:
                     "get_topics": "📚 正在列出知识点...",
                     "connect_mcp": "🔌 正在连接外部工具服务器...",
                 }
+                logger.info("🔧 第 %d 轮: %s args=%s", turn + 1, tool_name,
+                           str(tc.get("arguments", {}))[:200])
                 yield tool_icons.get(tool_name, f"⚙️ 正在执行 {tool_name}...") + "\n\n"
 
             # 存助手消息（带 tool_calls）
@@ -156,6 +163,7 @@ class HarnessAgent:
 
                 # DeepSeek 偶发不填参数 → 自动补
                 if not any(tool_args.values()):  # 所有参数都为空
+                    logger.debug("工具 %s 参数为空，自动补参", tool_name)
                     if tool_name == "rag_search":
                         tool_args["query"] = query
                     elif tool_name == "analyze_resume" and "resume_text" in str(
@@ -173,17 +181,22 @@ class HarnessAgent:
                 # s03：权限三道门 — 预防 LLM 幻觉调用危险操作
                 blocked = _check_permission(tool_name, tool_args)
                 if blocked:
+                    logger.warning("权限拦截: %s → %s", tool_name, blocked)
                     result = f"权限拒绝：{blocked}"
                 else:
                     handler = handlers.get(tool_name)
                     if handler:
                         try:
                             result = str(handler(**tool_args))
+                            logger.debug("工具 %s 返回 %d 字", tool_name, len(result))
                         except TypeError as e:
+                            logger.error("工具 %s 参数错误: %s", tool_name, e)
                             result = f"工具参数错误: {e}。参数: {tool_args}"
                         except Exception as e:
+                            logger.error("工具 %s 执行失败: %s", tool_name, e)
                             result = f"工具执行失败: {e}"
                     else:
+                        logger.error("未知工具: %s", tool_name)
                         result = f"未知工具: {tool_name}"
 
                 # 结果喂回（带 tool_call_id 配对）
@@ -199,7 +212,7 @@ class HarnessAgent:
                     else str(m.get("content", "")) for m in messages]
         try:
             extract_memories(dialogue)
-        except Exception:
-            pass
+        except Exception as e:
+            logger.warning("长期记忆提取失败: %s", e)
 
         yield "\n\n> 以上是面试辅导 Agent 的回答。继续练习或问我新的问题。"
